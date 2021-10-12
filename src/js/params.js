@@ -8,15 +8,20 @@ function defineParams(octree=null){
 		this.container = null;
 		this.renderer = null;
 		this.scene = null;
+		this.camera = null;
+		this.frustum = null;
 
 		//for frustum      
 		this.zmax = 5.e10;
 		this.zmin = 1;
 		this.fov = 60.
 
-		//camera distance under which we draw all the particles
-		this.minCamDist = 100;
+		//minimum size that a node must be to render the points (fraction of screen)
+		this.minNodeScreenSize = 0.05;
 
+		//will contain a list of nodes that are drawn
+		this.fullyDrawn = [];
+		this.drawing = false;
 	};
 
 

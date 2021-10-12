@@ -1,11 +1,13 @@
 var myVertexShader = `
 
-const float minPointScale = 3.;
+uniform float minPointScale;
+
+//const float minPointScale = 3.;
 const float maxPointScale = 1000.;
 
 void main(void) {
 
-	vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+	vec4 mvPosition = modelViewMatrix*vec4( position, 1.0 );
 
 	float cameraDist = length(mvPosition.xyz);
 	float pointScale = 1./cameraDist;
@@ -13,7 +15,7 @@ void main(void) {
 	
 	gl_PointSize = pointScale;
 
-	gl_Position = projectionMatrix * mvPosition;
+	gl_Position = projectionMatrix*mvPosition;
 
 
 }
