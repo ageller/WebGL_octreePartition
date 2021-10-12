@@ -1,0 +1,18 @@
+# json files #
+###################
+*.json
+
+# data files *
+#####################
+*.hdf5
+*.csv
+
+# python #
+###################
+*ipynb_checkpoints*
+__pycache__
+*.pyc
+
+# vim files # 
+###################
+*.swp
