@@ -32,9 +32,9 @@ function init(){
 	THREEx.WindowResize(params.renderer, params.camera);
 
 	//controls
-	//params.controls = new THREE.TrackballControls( params.camera, params.renderer.domElement );
-	params.controls = new THREE.FlyControls( params.camera , params.renderer.domElement);
-	params.controls.movementSpeed = 50.;
+	params.controls = new THREE.TrackballControls( params.camera, params.renderer.domElement );
+	// params.controls = new THREE.FlyControls( params.camera , params.renderer.domElement);
+	// params.controls.movementSpeed = 50.;
 
 
 

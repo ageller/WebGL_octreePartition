@@ -19,6 +19,13 @@ function update(){
 	params.camera.updateMatrixWorld();
 	params.frustum.setFromMatrix(new THREE.Matrix4().multiplyMatrices(params.camera.projectionMatrix, params.camera.matrixWorldInverse));  
 
+	//maybe I can use the internal frustum culling? (not implemented)
+	//https://github.com/mrdoob/three.js/issues/15339
+	params.scene.traverse(function(object){
+		if (object.isMesh || object.isLine || object.isPoints) {
+			object.userData.inView = params.frustum.intersectsObject(object);
+		}
+	});
 
 	//check if any of the nodes are close enough to draw (or could do this based on fps?)
 	params.octreeNodes.forEach(function(node){
@@ -26,29 +33,31 @@ function update(){
 		checkFrustum(node);
 		setNodeScreenSize(node);
 		//it seems like there are multiple draw calls for the same node.  I'm trying to fix that...
-		if (node.screenSize >= params.minNodeScreenSize && node.inFrustum && !params.fullyDrawn.includes(node.id)){
-			console.log('drawing node', node.id)
+		if (node.screenSize >= params.minNodeScreenSize && node.inFrustum && !params.fullyDrawn.includes(node.id) && params.totalParticlesDrawn <= params.maxParticlesToDraw){
+			console.log('drawing node', node.id, params.totalParticlesDrawn)
 			//draw the particles in the node
 			node.showing = true;
 			if (!params.drawing) {
 				params.fullyDrawn.push(node.id);
+				params.totalParticlesDrawn += node.Nparticles;
 				drawNode(node.id, [ 1, 1, 1, 1], node.id, 1, node.Nparticles);
 			}
 		}
 		if ((node.screenSize < params.minNodeScreenSize || !node.inFrustum) && params.fullyDrawn.includes(node.id)){
-			console.log('removing node', node.id)
 			//remove the particles in the node (though this will still keep the initial particle to mark the node location)
 			node.showing = false;
 			var obj = params.scene.getObjectByName(node.id);
+
 			//trying to fix the multiple draw issue...
 			while (obj){
 				params.scene.remove(obj);
 				var obj = params.scene.getObjectByName(node.id);
+				const index = params.fullyDrawn.indexOf(node.id);
+				if (index > -1) params.fullyDrawn.splice(index, 1);
+				params.totalParticlesDrawn -= node.Nparticles
 			}
-			const index = params.fullyDrawn.indexOf(node.id);
-			if (index > -1) params.fullyDrawn.splice(index, 1);
 
-
+			console.log('removed node', node.id, params.totalParticlesDrawn)
 		}
 	})
 }
@@ -141,6 +150,6 @@ function setNodeScreenSize(node){
 function checkNodes(){
 	//to check in console
 	params.octreeNodes.forEach(function(node){
-		console.log(node.cameraDistance, node.inFrustum, node.screenSize, node.showing)
+		if (node.inFrustum) console.log(node.cameraDistance, node.inFrustum, node.screenSize, node.showing)
 	})
 }

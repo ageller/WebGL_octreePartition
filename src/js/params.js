@@ -22,6 +22,9 @@ function defineParams(octree=null){
 		//will contain a list of nodes that are drawn
 		this.fullyDrawn = [];
 		this.drawing = false;
+
+		this.maxParticlesToDraw = 1e6;
+		this.totalParticlesDrawn = 0;
 	};
 
 
