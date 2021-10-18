@@ -16,14 +16,17 @@ function defineParams(octree=null){
 		this.zmin = 1;
 		this.fov = 60.
 
-		//minimum size that a node must be to render the points (fraction of screen)
-		this.minNodeScreenSize = 0.05;
+		//minimum pixel width for a node to require rendering all the points 
+		this.minNodeScreenSize = 10;
+
+		//default minimum particles size
+		this.defaultMinParticlesSize = 2.;
 
 		//will contain a list of nodes that are drawn
 		this.fullyDrawn = [];
 		this.drawing = false;
 
-		this.maxParticlesToDraw = 1e6;
+		this.maxParticlesToDraw = 5e6;
 		this.totalParticlesDrawn = 0;
 	};
 

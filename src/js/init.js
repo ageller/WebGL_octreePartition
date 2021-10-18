@@ -23,6 +23,7 @@ function init(){
 	params.camera = new THREE.PerspectiveCamera( params.fov, aspect, params.zmin, params.zmax);
 	params.camera.up.set(0, -1, 0);
 	params.camera.position.z = 10000;
+
 	params.scene.add(params.camera);  
 
 	//will hold the camera frustum (updated in renderAll)
@@ -33,6 +34,10 @@ function init(){
 
 	//controls
 	params.controls = new THREE.TrackballControls( params.camera, params.renderer.domElement );
+	//set the target position from the initial node center
+	params.octreeNodes.forEach(function(node, i){
+		if (node.id == 0)params.controls.target = new THREE.Vector3(node.x, node.y, node.z);
+	})
 	// params.controls = new THREE.FlyControls( params.camera , params.renderer.domElement);
 	// params.controls.movementSpeed = 50.;
 
@@ -75,12 +80,13 @@ function WebGLStart(d){
 	drawOctreeBoxes();
 
 //draw the first particles in each node (these will stay regardless of camera distance)
-	params.octreeNodes.forEach(function(node){
-		//just the first particles (these will stay regardless of camera distance)
-		drawNode(node.id, [ 1,  0,  0, 1], node.id+'First', 0, 1, 10.)
-		//all the particles (as a test)
-		//if (node.Nparticles > 0) drawNode(node.id, [ 0, 1, 0, 1], node.id, null, null, 10)
-	})
+	// params.octreeNodes.forEach(function(node, i){
+	// 	//just the first particles (these will stay regardless of camera distance)
+	// 	node.NparticlesToRender = node.Nparticles; //set this as a default at first
+	// 	drawNode(node.id, [ 1,  0,  0, 1], node.id+'First', 0, 1, 10.)
+	// 	//all the particles (as a test)
+	// 	//if (node.Nparticles > 0) drawNode(node.id, [ 0, 1, 0, 1], node.id, null, null, 10)
+	// })
 
 //begin the animation
 	animate();

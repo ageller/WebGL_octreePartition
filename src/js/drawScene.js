@@ -7,7 +7,9 @@ function clearScene(){
 
 }
 
-function addParticlesToScene(parts, color, name, start, end, minPointScale=3.){
+function addParticlesToScene(parts, color, name, start, end, minPointScale=params.defaultMinParticlesSize, maxN=params.maxParticlesToDraw){
+	//I can use the start and end values to define how many particles to add to the mesh,
+	//  but first I want to try limitting this in the shader with maxToRender.  That may be quicker than add/removing meshes.
 
 	var blend = THREE.AdditiveBlending;
 	var dWrite = false;
@@ -19,6 +21,7 @@ function addParticlesToScene(parts, color, name, start, end, minPointScale=3.){
 		uniforms: { //add uniform variable here
 			color: {value: new THREE.Vector4( color[0], color[1], color[2], color[3])},
 			minPointScale: {value: minPointScale},
+			maxToRender: {value: maxN} //this will be modified in the render loop
 		},
 
 		vertexShader: myVertexShader,
@@ -42,9 +45,13 @@ function addParticlesToScene(parts, color, name, start, end, minPointScale=3.){
 	var id = name;
 
 	// attributes
-	//positions
-	var positions = new Float32Array( len*3 ); // 3 vertices per point
-	geo.addAttribute( 'position', new THREE.BufferAttribute( positions, 3 ) );
+	//position
+	var position = new Float32Array( len*3 ); // 3 vertices per point
+	geo.addAttribute( 'position', new THREE.BufferAttribute( position, 3 ) );
+
+	//index
+	var pointIndex = new Float32Array( len );
+	geo.addAttribute( 'pointIndex', new THREE.BufferAttribute( pointIndex, 1 ) );
 
 	geo.setDrawRange( 0, len );
 
@@ -52,33 +59,37 @@ function addParticlesToScene(parts, color, name, start, end, minPointScale=3.){
 	mesh.name = name;
 	params.scene.add(mesh);
 
-	var pindex = i0;
+	var pindex = 0;
 	for (var j=0; j<len; j++){
 			
-			positions[pindex++] = parseFloat(parts[j].x);
-			positions[pindex++] = parseFloat(parts[j].y);
-			positions[pindex++] = parseFloat(parts[j].z);
+			position[pindex++] = parseFloat(parts[j].x);
+			position[pindex++] = parseFloat(parts[j].y);
+			position[pindex++] = parseFloat(parts[j].z);
+
+			pointIndex[j] = parseFloat(j);
+
 	}
 
 	mesh.position.set(0,0,0);
 	params.drawing = false;
-	
+
 }
 
 
-function drawNode(id, color, name, start, end, minPointScale=3){
+function drawNode(id, color, name, start, end, minPointScale=params.defaultMinParticlesSize, maxN=params.maxParticlesToDraw){
 	params.drawing = true;
 
 	//read in the file, and then draw the particles
 	d3.csv('src/data/octreeNodes/' + id + '.csv')
-	.then(function(d) {
-		// console.log('parts',id, d)
-		// checkExtent(d)
-		addParticlesToScene(d, color, name, start, end, minPointScale);
-	})
-	.catch(function(error){
-		console.log('ERROR:', error)
-	})
+		.then(function(d) {
+			// console.log('parts',id, d)
+			// checkExtent(d)
+			addParticlesToScene(d, color, name, start, end, minPointScale, maxN);
+		})
+		.catch(function(error){
+			console.log('ERROR:', error)
+		})
+
 }
 
 

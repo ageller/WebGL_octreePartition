@@ -1,11 +1,16 @@
 var myVertexShader = `
 
+attribute float pointIndex;
+
 uniform float minPointScale;
 
-//const float minPointScale = 3.;
-const float maxPointScale = 1000.;
+varying float vIndex;
+
+const float maxPointScale = 100.;
 
 void main(void) {
+
+	vIndex = pointIndex;
 
 	vec4 mvPosition = modelViewMatrix*vec4( position, 1.0 );
 

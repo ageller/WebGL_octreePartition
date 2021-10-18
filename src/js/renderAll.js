@@ -18,32 +18,51 @@ function update(){
 	params.camera.updateMatrix();
 	params.camera.updateMatrixWorld();
 	params.frustum.setFromMatrix(new THREE.Matrix4().multiplyMatrices(params.camera.projectionMatrix, params.camera.matrixWorldInverse));  
+	//maybe I don't need to frustum check?
 
 	//maybe I can use the internal frustum culling? (not implemented)
+	//This might work for removing a node that is already plotted, but wouldn't work for adding nodes (since they would not be in the scene)
+	//but I will use this to build params.totalParticlesDrawn 
+	//generally, I may not need any frustum check since three.js is doing that anyway
 	//https://github.com/mrdoob/three.js/issues/15339
-	params.scene.traverse(function(object){
-		if (object.isMesh || object.isLine || object.isPoints) {
-			object.userData.inView = params.frustum.intersectsObject(object);
+	params.totalParticlesDrawn = 0;
+	params.scene.traverse(function(obj){
+		if (obj.isMesh || obj.isPoints) {
+			if (params.frustum.intersectsObject(obj)) params.totalParticlesDrawn += obj.material.uniforms.maxToRender.value;
 		}
 	});
 
 	//check if any of the nodes are close enough to draw (or could do this based on fps?)
 	params.octreeNodes.forEach(function(node){
 		node.cameraDistance = params.camera.position.distanceTo( new THREE.Vector3( node.x, node.y, node.z) );
-		checkFrustum(node);
+		//checkFrustum(node);
+
 		setNodeScreenSize(node);
+
+		//decide how many particles to show in the screen for that node
+		//assume we have particles at 3 pixel minimum size
+		var prevNparticlesToRender = node.NparticlesToRender; //save this so that I can correct the total particles drawn
+		node.NparticlesToRender = Math.min(node.Nparticles, Math.floor(node.screenSize*node.screenSize/9.));
+
+		var drewNew = false;
 		//it seems like there are multiple draw calls for the same node.  I'm trying to fix that...
-		if (node.screenSize >= params.minNodeScreenSize && node.inFrustum && !params.fullyDrawn.includes(node.id) && params.totalParticlesDrawn <= params.maxParticlesToDraw){
-			console.log('drawing node', node.id, params.totalParticlesDrawn)
+		//if (node.screenSize >= params.minNodeScreenSize && node.inFrustum && !params.fullyDrawn.includes(node.id) && params.totalParticlesDrawn <= params.maxParticlesToDraw){
+		// if the node should be drawn ...
+		if (node.screenSize >= params.minNodeScreenSize && !params.fullyDrawn.includes(node.id) && (params.totalParticlesDrawn + node.NparticlesToRender) <= params.maxParticlesToDraw){
+			console.log('drawing node', node.id, params.totalParticlesDrawn, node.Nparticles, node.NparticlesToRender)
 			//draw the particles in the node
 			node.showing = true;
+			drewNew = true;
 			if (!params.drawing) {
 				params.fullyDrawn.push(node.id);
-				params.totalParticlesDrawn += node.Nparticles;
-				drawNode(node.id, [ 1, 1, 1, 1], node.id, 1, node.Nparticles);
+				params.totalParticlesDrawn += node.NparticlesToRender;
+				drawNode(node.id, [ 1, 1, 1, 1], node.id, 1, node.Nparticles, params.defaultMinParticlesSize, node.NparticlesToRender);
 			}
 		}
-		if ((node.screenSize < params.minNodeScreenSize || !node.inFrustum) && params.fullyDrawn.includes(node.id)){
+
+		//if ((node.screenSize < params.minNodeScreenSize || !node.inFrustum) && params.fullyDrawn.includes(node.id)){
+		//if the node should be removed ...
+		if (node.screenSize < params.minNodeScreenSize  && params.fullyDrawn.includes(node.id)){
 			//remove the particles in the node (though this will still keep the initial particle to mark the node location)
 			node.showing = false;
 			var obj = params.scene.getObjectByName(node.id);
@@ -54,15 +73,34 @@ function update(){
 				var obj = params.scene.getObjectByName(node.id);
 				const index = params.fullyDrawn.indexOf(node.id);
 				if (index > -1) params.fullyDrawn.splice(index, 1);
-				params.totalParticlesDrawn -= node.Nparticles
+				params.totalParticlesDrawn -= prevNparticlesToRender;
 			}
 
 			console.log('removed node', node.id, params.totalParticlesDrawn)
 		}
+
+		//update the number of particles to draw if necesarry
+		if (params.fullyDrawn.includes(node.id) && !drewNew){
+			var obj = params.scene.getObjectByName(node.id);
+			if (obj){
+				if (obj.material.uniforms.maxToRender.value != node.NparticlesToRender && 	(params.totalParticlesDrawn + node.NparticlesToRender - prevNparticlesToRender) <= params.maxParticlesToDraw){
+					obj.material.uniforms.maxToRender.value = node.NparticlesToRender;
+					obj.material.needsUpdate = true;
+					params.totalParticlesDrawn += (node.NparticlesToRender - prevNparticlesToRender);
+					console.log('updated particles to render', node.id, node.NparticlesToRender)
+				}
+			}
+		}
 	})
+
+	if (params.totalParticlesDrawn >= params.maxParticlesToDraw) console.log('!!! Reached maximum draw limit', params.totalParticlesDrawn, params.maxParticlesToDraw)
 }
 
 function checkFrustum(node){
+	//currently not used
+
+	//this mostly works, but I've seen some strange behavior near the frustum edges
+
 	//check if any of the corners is within the frustum
 	//I might be able to speed this up if I put a return right after setting inFrustum to true
 	var p;
@@ -142,7 +180,11 @@ function setNodeScreenSize(node){
 	//return a fraction of the screen size
 	var width = Math.max(xwidth, Math.max(ywidth, zwidth));
 
-	node.screenSize = width/((window.innerWidth + window.innerHeight)/2.)
+	//this will be a width in pixels
+	node.screenSize = width
+
+	//this will be a normalized width between 0 and 1 (by what should I normalize to)
+	//node.screenSize = width/((window.innerWidth + window.innerHeight)/2.)
 }
 
 
