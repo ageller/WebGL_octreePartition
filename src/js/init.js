@@ -1,11 +1,23 @@
 
 
+
 //this initializes everything needed for the scene
 function init(){
 
 	var screenWidth = window.innerWidth;
 	var screenHeight = window.innerHeight;
 	var aspect = screenWidth / screenHeight;
+
+	//add the stats indicator
+	params.stats = []
+	for (var i=0; i<3; i++){
+	 	var stats = new Stats();
+ 		stats.showPanel( i ); // 0: fps, 1: ms, 2: mb, 3+: custom
+ 		stats.domElement.style.cssText = 'position:absolute;top:0px;left:' + (i*80) + 'px;';
+		document.body.appendChild( stats.dom );
+		params.stats.push(stats);
+	}
+
 
 	// renderer
 	params.renderer = new THREE.WebGLRenderer( {

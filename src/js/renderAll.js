@@ -1,8 +1,12 @@
 //this is the animation loop
 function animate(time) {
-	requestAnimationFrame( animate );
+	params.stats.forEach(function(s){ s.begin();})
 	update();
 	render();
+	params.stats.forEach(function(s){ s.end();})
+
+	requestAnimationFrame( animate );
+
 }
 
 function render(){
@@ -12,6 +16,8 @@ function render(){
 
 function update(){
 	params.controls.update();
+
+	//add fps check, and also a stats display
 
 	//for frustum check
 	//https://stackoverflow.com/questions/29758233/three-js-check-if-object-is-still-in-view-of-the-camera
@@ -40,16 +46,18 @@ function update(){
 		setNodeScreenSize(node);
 
 		//decide how many particles to show in the screen for that node
-		//assume we have particles at 3 pixel minimum size
+		//assume we have particles at default pixel minimum size
 		var prevNparticlesToRender = node.NparticlesToRender; //save this so that I can correct the total particles drawn
-		node.NparticlesToRender = Math.min(node.Nparticles, Math.floor(node.screenSize*node.screenSize/9.));
+		node.NparticlesToRender = Math.min(node.Nparticles, Math.floor(node.screenSize*node.screenSize/(params.defaultMinParticlesSize*params.defaultMinParticlesSize)*params.NParticleFPSModifier));
+
+
 
 		var drewNew = false;
 		//it seems like there are multiple draw calls for the same node.  I'm trying to fix that...
 		//if (node.screenSize >= params.minNodeScreenSize && node.inFrustum && !params.fullyDrawn.includes(node.id) && params.totalParticlesDrawn <= params.maxParticlesToDraw){
 		// if the node should be drawn ...
-		if (node.screenSize >= params.minNodeScreenSize && !params.fullyDrawn.includes(node.id) && (params.totalParticlesDrawn + node.NparticlesToRender) <= params.maxParticlesToDraw){
-			console.log('drawing node', node.id, params.totalParticlesDrawn, node.Nparticles, node.NparticlesToRender)
+		if (node.screenSize >= params.minNodeScreenSize && !params.fullyDrawn.includes(node.id) && params.stats[0].fps() >= params.minFPS){
+			//console.log('drawing node', node.id, params.totalParticlesDrawn, node.NparticlesToRender, node.Nparticles)
 			//draw the particles in the node
 			node.showing = true;
 			drewNew = true;
@@ -83,17 +91,23 @@ function update(){
 		if (params.fullyDrawn.includes(node.id) && !drewNew){
 			var obj = params.scene.getObjectByName(node.id);
 			if (obj){
-				if (obj.material.uniforms.maxToRender.value != node.NparticlesToRender && 	(params.totalParticlesDrawn + node.NparticlesToRender - prevNparticlesToRender) <= params.maxParticlesToDraw){
+				if (obj.material.uniforms.maxToRender.value != node.NparticlesToRender){
 					obj.material.uniforms.maxToRender.value = node.NparticlesToRender;
 					obj.material.needsUpdate = true;
 					params.totalParticlesDrawn += (node.NparticlesToRender - prevNparticlesToRender);
-					console.log('updated particles to render', node.id, node.NparticlesToRender)
+					//console.log('updated particles to render', node.id, params.totalParticlesDrawn, node.NparticlesToRender)
 				}
 			}
 		}
 	})
 
-	if (params.totalParticlesDrawn >= params.maxParticlesToDraw) console.log('!!! Reached maximum draw limit', params.totalParticlesDrawn, params.maxParticlesToDraw)
+	//if (params.stats[0].fps() < params.minFPS) console.log('!!! Reached maximum draw limit', params.totalParticlesDrawn, params.stats[0].fps())
+
+	//tweak the numbe of particles based on the fps
+	//setting a max limit of 1e5 here in case it matters
+	if (params.stats[0].fps() >= params.targetFPS) params.NParticleFPSModifier = Math.min(1e5, params.NParticleFPSModifier + 0.1);
+	if (params.stats[0].fps() < params.minFPS) params.NParticleFPSModifier = Math.max(0., params.NParticleFPSModifier - 0.1);
+	//console.log('total particles drawn',params.totalParticlesDrawn)
 }
 
 function checkFrustum(node){
