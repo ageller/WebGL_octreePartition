@@ -1,10 +1,21 @@
 //all "global" variables are contained within params object
 var params;
-function defineParams(octree=null){
+function defineParams(){
 	params = new function() {
 		//to hold the data
-		this.octreeNodes = octree;
+		this.octreeNodes = {};
 		
+		//available particle type
+		this.particleTypes = ['Gas','Stars']
+		this.particleColors = {'Gas':[ 1, 0, 0, 1],
+							   'Stars':[0, 0, 1, 1]};
+		this.fileRoot = {'Gas':'src/data/m12i_res71000/octreeNodes/Gas',
+						 'Stars':'src/data/m12i_res71000/octreeNodes/Stars'};
+
+		//this.particlesTypes = ['Gaia'];
+		//this.particleColors = {Gaia:[1,1,1,1]};
+		//this.fileRoot = 'src/data/Gaia/octreeNodes';
+
 		this.container = null;
 		this.renderer = null;
 		this.scene = null;
@@ -21,16 +32,19 @@ function defineParams(octree=null){
 		this.minNodeScreenSize = 10;
 
 		//default minimum particles size
-		this.defaultMinParticlesSize = 1.;
+		this.defaultMinParticleSize = 4.;
 
 		//will contain a list of nodes that are drawn
-		this.fullyDrawn = [];
+		this.alreadyDrawn = [];
 		this.drawing = false;
+		this.removing = false;
+		this.toRemove = [];
+		this.toDraw = [];
 
-		this.minFPS = 20; //below this we stop drawing particles
+		this.FPS = 30; //will be changed each render call
+		this.minFPS = 10; //below this we stop drawing particles
 		this.targetFPS = 27; //above this we will add particles (note: I think the max fps possible will depend on your monitor)
 		this.NParticleFPSModifier = 1.; //will be increased or decreased based on the current fps
-		this.totalParticlesDrawn = 0;
 	};
 
 

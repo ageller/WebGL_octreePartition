@@ -3,6 +3,7 @@ var myVertexShader = `
 attribute float pointIndex;
 
 uniform float minPointScale;
+uniform float maxToRender;
 
 varying float vIndex;
 
@@ -20,6 +21,8 @@ void main(void) {
 	
 	gl_PointSize = pointScale;
 
+	if (pointIndex > maxToRender) gl_PointSize = 0.;
+	
 	gl_Position = projectionMatrix*mvPosition;
 
 

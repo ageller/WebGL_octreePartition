@@ -7,7 +7,7 @@ function clearScene(){
 
 }
 
-function addParticlesToScene(parts, color, name, start, end, minPointScale=params.defaultMinParticlesSize, maxN=params.maxParticlesToDraw){
+function addParticlesToScene(parts, color, name, start, end, minPointScale=params.defaultMinParticleSize, maxN=params.maxParticlesToDraw){
 	//I can use the start and end values to define how many particles to add to the mesh,
 	//  but first I want to try limitting this in the shader with maxToRender.  That may be quicker than add/removing meshes.
 
@@ -71,24 +71,33 @@ function addParticlesToScene(parts, color, name, start, end, minPointScale=param
 	}
 
 	mesh.position.set(0,0,0);
-	params.drawing = false;
 
 }
 
 
-function drawNode(id, color, name, start, end, minPointScale=params.defaultMinParticlesSize, maxN=params.maxParticlesToDraw){
-	params.drawing = true;
+function drawNode(p, node){
 
-	//read in the file, and then draw the particles
-	d3.csv('src/data/octreeNodes/' + id + '.csv')
-		.then(function(d) {
-			// console.log('parts',id, d)
-			// checkExtent(d)
-			addParticlesToScene(d, color, name, start, end, minPointScale, maxN);
-		})
-		.catch(function(error){
-			console.log('ERROR:', error)
-		})
+	var drawn = false;
+	if (node.hasOwnProperty('particles')){
+		if (node.particles.length >= node.NparticlesToRender){
+			drawn = true;
+			addParticlesToScene(node.particles, params.particleColors[p], p+node.id, 0, node.NparticlesToRender, params.defaultMinParticleSize, node.NparticlesToRender);
+		}
+	}
+
+	if (!drawn){
+		//read in the file, and then draw the particles
+		d3.csv(params.fileRoot[p] + '/' + node.id + '.csv')
+			.then(function(d) {
+				// console.log('parts',id, d)
+				// checkExtent(d)
+				node.particles = d.slice(0,node.NparticlesToRender);
+				addParticlesToScene(d, params.particleColors[p], p+node.id, 0, node.NparticlesToRender, params.defaultMinParticleSize, node.NparticlesToRender);
+			})
+			.catch(function(error){
+				console.log('ERROR:', error)
+			})
+	}
 
 }
 
@@ -104,8 +113,8 @@ function drawOctreeBox(node, color){
 
 	params.scene.add(wireframe);
 }
-function drawOctreeBoxes(color='#FF0000'){
-	params.octreeNodes.forEach(function(node){
+function drawOctreeBoxes(octreeNodes, color='#00FFFF'){
+	octreeNodes.forEach(function(node){
 		drawOctreeBox(node, color);
 
 	})

@@ -2,7 +2,7 @@
 
 
 //this initializes everything needed for the scene
-function init(){
+function init(target){
 
 	var screenWidth = window.innerWidth;
 	var screenHeight = window.innerHeight;
@@ -47,9 +47,7 @@ function init(){
 	//controls
 	params.controls = new THREE.TrackballControls( params.camera, params.renderer.domElement );
 	//set the target position from the initial node center
-	params.octreeNodes.forEach(function(node, i){
-		if (node.id == 0)params.controls.target = new THREE.Vector3(node.x, node.y, node.z);
-	})
+	if (target) params.controls.target = target;
 	// params.controls = new THREE.FlyControls( params.camera , params.renderer.domElement);
 	// params.controls.movementSpeed = 50.;
 
@@ -71,42 +69,37 @@ function pruneOctree(tree){
 function WebGLStart(d){
 
 //remove any nodes that don't have particles (leaving only the base leafs)
-	pruned = pruneOctree(d);
-
-//define params and add the data
-	defineParams(pruned);
+	params.particleTypes.forEach(function(p,i){
+		params.octreeNodes[p] = pruneOctree(d[i]);
+		//draw the octree node centers
+		// addParticlesToScene(params.octreeNodes[p], params.particleColors[p], 'centers', null, null, 10);
+	})
+	//params.octreeNodes = d;
 
 //initialize everything
-	init();
+//get the center for controls
+	var target;
+	d[0].forEach(function(node, i){
+		if (node.id == 0) target = new THREE.Vector3(node.x, node.y, node.z);
+	})
+	init(target);
 
-//draw the octree node centers
-//	addParticlesToScene(params.octreeNodes, [1, 0, 0, 1], 'centers', null, null, 10);
 
-//check
-	// var index = 1
-	// console.log(params.octreeNodes[index])
-	// drawNode(params.octreeNodes[index].id, [ 0,  1,  0, 1], 'foo', null, null, 10.);
-	// drawOctreeBox(params.octreeNodes[index], '#FF0000')
+//draw the octree boxes for the first particle group
+	// drawOctreeBoxes(d[0]);
 
-//draw the octree boxes
-	drawOctreeBoxes();
-
-//draw the first particles in each node (these will stay regardless of camera distance)
-	// params.octreeNodes.forEach(function(node, i){
-	// 	//just the first particles (these will stay regardless of camera distance)
-	// 	node.NparticlesToRender = node.Nparticles; //set this as a default at first
-	// 	drawNode(node.id, [ 1,  0,  0, 1], node.id+'First', 0, 1, 10.)
-	// 	//all the particles (as a test)
-	// 	//if (node.Nparticles > 0) drawNode(node.id, [ 0, 1, 0, 1], node.id, null, null, 10)
-	// })
 
 //begin the animation
 	animate();
 }
 
 //runs on load
-d3.json('src/data/octreeNodes/octree.json')
-	.then(function(d) {
+defineParams();
+var promises = [];
+params.particleTypes.forEach(function(p){
+	promises.push(d3.json(params.fileRoot[p]+'/octree.json'))
+})
+Promise.all(promises).then(function(d) {
 		console.log(d);
 		WebGLStart(d);
 	})
