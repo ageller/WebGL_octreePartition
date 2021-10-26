@@ -1,3 +1,9 @@
+// ///////////////////////////////////////////////////////
+// I'd like to find some way to stop the promisses from d3.csv somehow, incase there are too many files being read in they become irrelevant
+//
+//
+//
+
 //this is the animation loop
 function animate(time) {
 	var s1 = new Date().getTime()/1000;
@@ -21,37 +27,31 @@ function render(){
 function update(){
 	params.controls.update();
 
-	//add fps check, and also a stats display
 
-	//for frustum check
-	//https://stackoverflow.com/questions/29758233/three-js-check-if-object-is-still-in-view-of-the-camera
-	// params.camera.updateMatrix();
-	// params.camera.updateMatrixWorld();
-	// params.frustum.setFromMatrix(new THREE.Matrix4().multiplyMatrices(params.camera.projectionMatrix, params.camera.matrixWorldInverse));  
-	//maybe I don't need to frustum check?
+	//check if we should reset the draw buffer
+	var dateCheck = new Date().getTime()/1000.
+	if ((dateCheck - params.drawStartTime) > params.maxDrawInterval && params.drawPass > 100  && params.drawCount < params.toDraw.length){
+		console.log('clearing drawing buffer', params.toDraw.length)
+		params.drawStartTime = new Date().getTime()/1000;
+		clearDrawer();
+	}
 
-	//maybe I can use the internal frustum culling? (not implemented)
-	//This might work for removing a node that is already plotted, but wouldn't work for adding nodes (since they would not be in the scene)
-	//but I will use this to build params.totalParticlesDrawn 
-	//generally, I may not need any frustum check since three.js is doing that anyway
-	//https://github.com/mrdoob/three.js/issues/15339
-	// params.totalParticlesDrawn = 0;
-	// params.scene.traverse(function(obj){
-	// 	if (obj.isMesh || obj.isPoints) {
-	// 		if (params.frustum.intersectsObject(obj)) params.totalParticlesDrawn += obj.material.uniforms.maxToRender.value;
-	// 	}
-	// });
+	//check if we've successfully drawn all the particles
+	if (params.drawCount >= params.drawIndex && params.drawIndex > 0) {
+		console.log('done drawing', params.drawCount, params.drawIndex);
+		clearDrawer();
+	}
 
 	//maybe I should create a promise structure here, or else I should have a setInterval to check when one is finished before moving on.
 	//remove any nodes that are flagged for removal
-	if (!params.removing) removeUnwantedNodes();
+	if (params.toRemove.length > 0) removeUnwantedNodes();
 
 	//draw the nodes that are flagged for drawing
-	if (!params.drawing) drawWantedNodes();
+	if (params.toDraw.length > 0 && params.drawCount > params.drawIndex) drawWantedNodes();
 
 	params.particleTypes.forEach(function(p){
 		//first get all the sizes and sort
-		var sizes = []
+		var toSort = []
 		var indices = []
 		params.octreeNodes[p].forEach(function(node,i){
 			//don't include any nodes that are marked for removal
@@ -60,25 +60,27 @@ function update(){
 				//checkFrustum(node);
 
 				setNodeScreenSize(node);
-				sizes.push(node.screenSize);
+				//toSort.push(node.screenSize/node.cameraDistance);
+				toSort.push(node.screenSize);
 				indices.push(i);
 			}
 		});
 		//sort from big to small
-		indices.sort(function (a, b) { return sizes[a] > sizes[b] ? -1 : sizes[a] < sizes[b] ? 1 : 0; });
+		indices.sort(function (a, b) { return toSort[a] > toSort[b] ? -1 : toSort[a] < toSort[b] ? 1 : 0; });
 
 		//now render
 		indices.forEach(function(index){
 
 			var node = params.octreeNodes[p][index];
 
+			//if we've reached the maximum draw length, the start replacing files?
+			if (params.toDraw.length >= params.maxFilesToRead) 	params.indexToAddToDraw = (params.indexToAddToDraw + 1) % params.maxFilesToRead;
+
 			//decide how many particles to show in the screen for that node
 			//assume we have particles at default pixel minimum size
 			var prevNparticlesToRender = node.NparticlesToRender; //save this so that I can correct the total particles drawn
-			node.NparticlesToRender = Math.max(1.,Math.min(node.Nparticles, Math.floor(node.screenSize/params.defaultMinParticleSize*params.NParticleFPSModifier)));
 
-			//render more in closer cells?
-			//node.NparticlesToRender /= node.cameraDistance;
+			node.NparticlesToRender = Math.max(1., Math.min(node.Nparticles, Math.floor(node.screenSize*node.screenSize/(params.defaultMinParticleSize*params.defaultMinParticleSize)*params.NParticleFPSModifier)));
 
 			var drewNew = false;
 			// if the node should be drawn
@@ -86,10 +88,13 @@ function update(){
 				//console.log('drawing node', p, node.id, node.NparticlesToRender, node.Nparticles)
 				node.showing = true;
 				drewNew = true;
-				if (!params.drawing) {
+				if (params.toDraw.length < params.maxFilesToRead){
 					params.alreadyDrawn.push(p+node.id);
-					params.toDraw.push([p, node.id])
-
+					params.toDraw.push([p, node.id, false]);
+					params.toDrawIDs.push(p+node.id);
+				} else {
+					//params.toDraw[params.indexToAddToDraw] = [p, node.id, false];
+					//params.toDrawIDs[params.indexToAddToDraw] = p+node.id;
 				}
 			}
 
@@ -97,78 +102,90 @@ function update(){
 			if (node.screenSize < params.minNodeScreenSize && params.alreadyDrawn.includes(p+node.id)){
 				node.showing = false;
 				var obj = params.scene.getObjectByName(p+node.id);
+				if (obj) params.toRemove.push(obj.name); //will be removed later
+				
 				node.particles = [];
 
-				while (obj){
-					obj = params.scene.getObjectByName(p+node.id);
-					params.toRemove.push(obj.name); //will be removed later
-				}
-
 				//remove from already drawn list
-				var i = params.alreadyDrawn.indexOf(p+node.id);
-				if (i !== -1) {
-					params.alreadyDrawn.splice(i, 1);
-				}
+				const index = params.alreadyDrawn.indexOf(p+node.id);
+				if (index > -1) params.alreadyDrawn.splice(index, 1);
 				//console.log('removed node', p, node.id)
 			}
 
 			//if we need to update the number of particles drawn in the node
-			if (params.alreadyDrawn.includes(p+node.id) && !drewNew && prevNparticlesToRender != node.NparticlesToRender){			
+			//it seems like this the NparticlesToRender is not set correctly on the first few draw passes??
+			if (params.alreadyDrawn.includes(p+node.id) && !params.toDrawIDs.includes(p+node.id) && !drewNew && prevNparticlesToRender != node.NparticlesToRender && params.drawPass > 5){
+
+				//console.log('check', prevNparticlesToRender, node.Nparticles, node.NparticlesToRender)	
 				var obj = params.scene.getObjectByName(p+node.id);
 
 				//if we already have enough particles in memory, just adjust the max number in the shader
 				//I am a bit worried that this still keeps the particles in there and slows the frame rate
 				if (obj){
-					if (node.particles.length >= node.NparticlesToRender){
-						obj.material.uniforms.maxToRender.value = node.NparticlesToRender;
-						obj.material.needsUpdate = true;
-						node.particles = node.particles.slice(0, node.NarticlesToRender)
+					obj.material.uniforms.maxToRender.value = node.NparticlesToRender;
+					obj.material.needsUpdate = true;
+					if (node.particles.length >= node.NparticlesToRender) node.particles = node.particles.slice(0, node.NparticlesToRender);
+					if (params.toDraw.length < params.maxFilesToRead){
+						params.toDraw.push([p, node.id, true]); //will be updated later
+						params.toDrawIDs.push(p+node.id);
 					} else {
-						//I could add the extra particles as a new object, but then I'm not sure how I would adjust the number drawn
-						//remove and draw back so that I don't keep the extra particles in the scene
-						params.toRemove.push(obj.name); //will be removed later
-						params.toDraw.push([p, node.id])
+						//params.toDraw[params.indexToAddToDraw] = [p, node.id, true];
+						//params.toDrawIDs[params.indexToAddToDraw] = p+node.id;
 					}
 				}
 			}
 
 		})
 	})
+	
+	params.drawPass += 1;``
 
 	//if (params.stats[0].fps() < params.minFPS) console.log('!!! Reached maximum draw limit', params.totalParticlesDrawn, params.stats[0].fps())
 
 	//tweak the number of particles based on the fps
 	//not sure what limits I should set here
-	// if (params.FPS >= params.targetFPS) params.NParticleFPSModifier = Math.min(1, params.NParticleFPSModifier*1.5);// + 0.1);
-	// if (params.FPS < params.minFPS) params.NParticleFPSModifier = Math.max(0.01, params.NParticleFPSModifier*0.5);// - 0.1);
+	if (params.FPS >= params.targetFPS) params.NParticleFPSModifier = Math.min(1, params.NParticleFPSModifier*1.5);// + 0.1);
+	if (params.FPS < params.minFPS) params.NParticleFPSModifier = Math.max(0.01, params.NParticleFPSModifier*0.5);// - 0.1);
 	//console.log('total particles drawn',params.totalParticlesDrawn)
 }
 
+function clearDrawer(){
+	params.drawCount = 0;
+	params.drawIndex = -1;
+	params.toDraw = [];
+	params.toDrawIDs = [];
+	params.readPromisses = [];
+}
+
 function removeUnwantedNodes(){
-	params.removing = true;
+	console.log('removing', params.toRemove.length);
 	params.toRemove.forEach(function(name){
 		var obj = params.scene.getObjectByName(name);
-		params.scene.remove(obj)
+		while(obj){
+			params.scene.remove(obj);
+			obj = params.scene.getObjectByName(name);
+		}
 	});
 	params.toRemove = [];
-	params.removing = false;
 }
 
 function drawWantedNodes(){
-	params.drawing = true;
+	console.log('drawing', params.toDraw.length);
+	params.drawCount = 0;
+	params.drawIndex = params.toDraw.length;
 	params.toDraw.forEach(function(arr){
 		var p = arr[0];
 		var iden = arr[1];
+		var updateGeo = arr[2];
 		var node = null;
 		params.octreeNodes[p].forEach(function(n){
 			if (n.id == iden) node = n;
 		})
-		if (node) drawNode(p, node);
+		if (node) drawNode(p, node, updateGeo);
 	})
-	params.toDraw = [];
-	params.drawing = false;
-
 }
+
+
 function checkFrustum(node){
 	//currently not used
 
@@ -223,6 +240,7 @@ function setNodeScreenSize(node){
 	x2.y = (x2.y - 1)*window.innerHeight/2.;
 	x2.z = 0;
 	var xwidth = x1.distanceTo(x2);	
+	if (!isFinite(xwidth)) xwidth = 0.;
 
 	//y width
 	var y1 = new THREE.Vector3(node.x, node.y - node.width/2., node.z);
@@ -236,6 +254,7 @@ function setNodeScreenSize(node){
 	y2.y = (y2.y - 1)*window.innerHeight/2.;
 	y2.z = 0;
 	var ywidth = y1.distanceTo(y2);	
+	if (!isFinite(ywidth)) ywidth = 0.;
 
 	//x width
 	var z1 = new THREE.Vector3(node.x, node.y, node.z - node.width/2.);
@@ -249,6 +268,7 @@ function setNodeScreenSize(node){
 	z2.y = (z2.y - 1)*window.innerHeight/2.;
 	z2.z = 0;
 	var zwidth = z1.distanceTo(z2);	
+	if (!isFinite(zwidth)) zwidth = 0.;
 
 	//return a fraction of the screen size
 	var width = Math.max(xwidth, Math.max(ywidth, zwidth));

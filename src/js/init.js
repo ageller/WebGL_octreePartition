@@ -45,11 +45,14 @@ function init(target){
 	THREEx.WindowResize(params.renderer, params.camera);
 
 	//controls
-	params.controls = new THREE.TrackballControls( params.camera, params.renderer.domElement );
-	//set the target position from the initial node center
-	if (target) params.controls.target = target;
-	// params.controls = new THREE.FlyControls( params.camera , params.renderer.domElement);
-	// params.controls.movementSpeed = 50.;
+	// params.controls = new THREE.TrackballControls( params.camera, params.renderer.domElement );
+	// //set the target position from the initial node center
+	// if (target) params.controls.target = target;
+	params.camera.position.x = target.x;
+	params.camera.position.y = target.y;
+	params.camera.position.z = target.z + 10000;
+	params.controls = new THREE.FlyControls( params.camera , params.renderer.domElement);
+	params.controls.movementSpeed = 50.;
 
 
 
@@ -59,7 +62,8 @@ function pruneOctree(tree){
 	out = [];
 	tree.forEach(function(d){
 		d.showing = false; //will be set to true if it is fully rendered
-		if (d.Nparticles > 0) out.push(d)
+		d.NparticlesToRender = d.Nparticles;
+		if (d.Nparticles > 0) out.push(d);
 	})
 
 	return out

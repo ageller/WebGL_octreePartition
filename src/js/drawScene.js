@@ -7,32 +7,7 @@ function clearScene(){
 
 }
 
-function addParticlesToScene(parts, color, name, start, end, minPointScale=params.defaultMinParticleSize, maxN=params.maxParticlesToDraw){
-	//I can use the start and end values to define how many particles to add to the mesh,
-	//  but first I want to try limitting this in the shader with maxToRender.  That may be quicker than add/removing meshes.
-
-	var blend = THREE.AdditiveBlending;
-	var dWrite = false;
-	var dTest = false;
-	var transp = true;
-
-	var material = new THREE.ShaderMaterial( {
-
-		uniforms: { //add uniform variable here
-			color: {value: new THREE.Vector4( color[0], color[1], color[2], color[3])},
-			minPointScale: {value: minPointScale},
-			maxToRender: {value: maxN} //this will be modified in the render loop
-		},
-
-		vertexShader: myVertexShader,
-		fragmentShader: myFragmentShader,
-		depthWrite:dWrite,
-		depthTest: dTest,
-		transparent:transp,
-		alphaTest: false,
-		blending:blend,
-	} );
-
+function createParticleGeometry(parts, start, end){
 	//geometry
 	var geo = new THREE.BufferGeometry();
 
@@ -55,10 +30,6 @@ function addParticlesToScene(parts, color, name, start, end, minPointScale=param
 
 	geo.setDrawRange( 0, len );
 
-	var mesh = new THREE.Points(geo, material);
-	mesh.name = name;
-	params.scene.add(mesh);
-
 	var pindex = 0;
 	for (var j=0; j<len; j++){
 			
@@ -70,29 +41,92 @@ function addParticlesToScene(parts, color, name, start, end, minPointScale=param
 
 	}
 
-	mesh.position.set(0,0,0);
+	return geo;
+}
+
+function addParticlesToScene(parts, color, name, start, end, minPointScale=params.defaultMinParticleSize, maxN=params.maxParticlesToDraw, updateGeo=false){
+	//I can use the start and end values to define how many particles to add to the mesh,
+	//  but first I want to try limitting this in the shader with maxToRender.  That may be quicker than add/removing meshes.
+
+	params.drawStartTime = new Date().getTime()/1000;
+
+	//geometry
+	var geo = createParticleGeometry(parts, start, end);
+
+	if (updateGeo){
+		//update the geometry in the mesh
+		var obj = params.scene.getObjectByName(name);
+		if (obj){
+			obj.geometry = geo;
+			obj.geometry.needsUpdate = true;
+		}
+
+	} else {
+		//create the mesh
+		var blend = THREE.AdditiveBlending;
+		var dWrite = false;
+		var dTest = false;
+		var transp = true;
+
+		var material = new THREE.ShaderMaterial( {
+
+			uniforms: { //add uniform variable here
+				color: {value: new THREE.Vector4( color[0], color[1], color[2], color[3])},
+				minPointScale: {value: minPointScale},
+				maxToRender: {value: maxN} //this will be modified in the render loop
+			},
+
+			vertexShader: myVertexShader,
+			fragmentShader: myFragmentShader,
+			depthWrite:dWrite,
+			depthTest: dTest,
+			transparent:transp,
+			alphaTest: false,
+			blending:blend,
+		} );
+
+
+
+		var mesh = new THREE.Points(geo, material);
+		mesh.name = name;
+		params.scene.add(mesh);
+
+		mesh.position.set(0,0,0);
+	}
+
+	//remove from the toDraw list
+	const index = params.toDrawIDs.indexOf(name);
+	// if (index > -1) {
+	// 	params.toDraw.splice(index, 1);
+	// 	params.toDrawIDs.splice(index, 1);
+	// }
+	params.drawCount += 1;
+
+	//console.log('checking drawing', params.drawCount, params.drawIndex, params.toDraw.length)
 
 }
 
 
-function drawNode(p, node){
+function drawNode(p, node, updateGeo=false){
 
 	var drawn = false;
 	if (node.hasOwnProperty('particles')){
 		if (node.particles.length >= node.NparticlesToRender){
 			drawn = true;
-			addParticlesToScene(node.particles, params.particleColors[p], p+node.id, 0, node.NparticlesToRender, params.defaultMinParticleSize, node.NparticlesToRender);
+			addParticlesToScene(node.particles, params.particleColors[p], p+node.id, 0, node.NparticlesToRender, params.defaultMinParticleSize, node.NparticlesToRender, updateGeo);
 		}
 	}
 
 	if (!drawn){
 		//read in the file, and then draw the particles
-		d3.csv(params.fileRoot[p] + '/' + node.id + '.csv')
-			.then(function(d) {
+		var prom = d3.csv(params.fileRoot[p] + '/' + node.id + '.csv')
+		params.readPromisses.push(prom);
+
+		prom.then(function(d) {
 				// console.log('parts',id, d)
 				// checkExtent(d)
 				node.particles = d.slice(0,node.NparticlesToRender);
-				addParticlesToScene(d, params.particleColors[p], p+node.id, 0, node.NparticlesToRender, params.defaultMinParticleSize, node.NparticlesToRender);
+				addParticlesToScene(d, params.particleColors[p], p+node.id, 0, node.NparticlesToRender, params.defaultMinParticleSize, node.NparticlesToRender, updateGeo);
 			})
 			.catch(function(error){
 				console.log('ERROR:', error)
