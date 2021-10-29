@@ -1,6 +1,6 @@
 // ///////////////////////////////////////////////////////
 // I'd like to find some way to stop the promisses from d3.csv somehow, incase there are too many files being read in they become irrelevant
-//
+// maybe I should allow nodes that are closer to the camera to have a higher render amount?
 //
 //
 
@@ -13,8 +13,17 @@ function animate(time) {
 	params.stats.forEach(function(s){ s.end();})
 	var s2 = new Date().getTime()/1000;
 	//params.FPS = params.stats[0].fps();
-	params.FPS = 1./(s2 - s1);
-
+	//params.FPS = 1./(s2 - s1);
+	//take a moving average
+	//var FPSNow = 1./(s2 - s1);
+	var FPSNow = params.stats[0].fps();
+	//taking moving averages of every params.FPSmod frames to avoid cyclic jumps in particle sizes
+	var norm = params.drawPass % params.FPSmod
+	if (norm > 0 && FPSNow > 0) params.FPS = ((norm - 1.)*params.FPS + FPSNow)/norm;
+	if (!isFinite(params.FPS)) {
+		console.log('Warning bad FPS', params.FPS)
+		params.FPS = params.targetFPS;
+	}
 	requestAnimationFrame( animate );
 
 }
@@ -34,6 +43,7 @@ function update(){
 		console.log('clearing drawing buffer', params.toDraw.length)
 		params.drawStartTime = new Date().getTime()/1000;
 		clearDrawer();
+		clearRemover();
 	}
 
 	//check if we've successfully drawn all the particles
@@ -42,111 +52,120 @@ function update(){
 		clearDrawer();
 	}
 
-	//maybe I should create a promise structure here, or else I should have a setInterval to check when one is finished before moving on.
+
+	//check if we've successfully re moved all the particles
+	if (params.removeCount >= params.removeIndex && params.removeIndex > 0) {
+		console.log('done removing', params.removeCount, params.removeIndex);
+		clearRemover();
+	}
 	//remove any nodes that are flagged for removal
-	if (params.toRemove.length > 0) removeUnwantedNodes();
+	if (params.toRemove.length > 0 && params.removeCount > params.removeIndex) removeUnwantedNodes();
 
 	//draw the nodes that are flagged for drawing
 	if (params.toDraw.length > 0 && params.drawCount > params.drawIndex) drawWantedNodes();
 
-	params.particleTypes.forEach(function(p){
-		//first get all the sizes and sort
-		var toSort = []
-		var indices = []
-		params.octreeNodes[p].forEach(function(node,i){
-			//don't include any nodes that are marked for removal
-			if (!params.toRemove.includes(p+node.id)){
-				node.cameraDistance = params.camera.position.distanceTo( new THREE.Vector3( node.x, node.y, node.z) );
-				//checkFrustum(node);
+	//check if the object is in view (if not, we won't draw and can remove; though note that this will not pick up new nodes that shouldn't be drawn)
+	//https://github.com/mrdoob/three.js/issues/15339
+	params.camera.updateMatrix();
+	params.camera.updateMatrixWorld();
+	params.frustum.setFromMatrix(new THREE.Matrix4().multiplyMatrices(params.camera.projectionMatrix, params.camera.matrixWorldInverse));  
 
-				setNodeScreenSize(node);
-				//toSort.push(node.screenSize/node.cameraDistance);
-				toSort.push(node.screenSize);
-				indices.push(i);
-			}
-		});
-		//sort from big to small
-		indices.sort(function (a, b) { return toSort[a] > toSort[b] ? -1 : toSort[a] < toSort[b] ? 1 : 0; });
-
-		//now render
-		indices.forEach(function(index){
-
-			var node = params.octreeNodes[p][index];
-
-			//if we've reached the maximum draw length, the start replacing files?
-			if (params.toDraw.length >= params.maxFilesToRead) 	params.indexToAddToDraw = (params.indexToAddToDraw + 1) % params.maxFilesToRead;
-
-			//decide how many particles to show in the screen for that node
-			//assume we have particles at default pixel minimum size
-			var prevNparticlesToRender = node.NparticlesToRender; //save this so that I can correct the total particles drawn
-
-			node.NparticlesToRender = Math.max(1., Math.min(node.Nparticles, Math.floor(node.screenSize*node.screenSize/(params.defaultMinParticleSize*params.defaultMinParticleSize)*params.NParticleFPSModifier)));
-
-			var drewNew = false;
-			// if the node should be drawn
-			if (node.screenSize >= params.minNodeScreenSize && !params.alreadyDrawn.includes(p+node.id) && params.FPS >= params.minFPS ){
-				//console.log('drawing node', p, node.id, node.NparticlesToRender, node.Nparticles)
-				node.showing = true;
-				drewNew = true;
-				if (params.toDraw.length < params.maxFilesToRead){
-					params.alreadyDrawn.push(p+node.id);
-					params.toDraw.push([p, node.id, false]);
-					params.toDrawIDs.push(p+node.id);
-				} else {
-					//params.toDraw[params.indexToAddToDraw] = [p, node.id, false];
-					//params.toDrawIDs[params.indexToAddToDraw] = p+node.id;
-				}
-			}
-
-			//if the node should be removed
-			if (node.screenSize < params.minNodeScreenSize && params.alreadyDrawn.includes(p+node.id)){
-				node.showing = false;
-				var obj = params.scene.getObjectByName(p+node.id);
-				if (obj) params.toRemove.push(obj.name); //will be removed later
-				
-				node.particles = [];
-
-				//remove from already drawn list
-				const index = params.alreadyDrawn.indexOf(p+node.id);
-				if (index > -1) params.alreadyDrawn.splice(index, 1);
-				//console.log('removed node', p, node.id)
-			}
-
-			//if we need to update the number of particles drawn in the node
-			//it seems like this the NparticlesToRender is not set correctly on the first few draw passes??
-			if (params.alreadyDrawn.includes(p+node.id) && !params.toDrawIDs.includes(p+node.id) && !drewNew && prevNparticlesToRender != node.NparticlesToRender && params.drawPass > 5){
-
-				//console.log('check', prevNparticlesToRender, node.Nparticles, node.NparticlesToRender)	
-				var obj = params.scene.getObjectByName(p+node.id);
-
-				//if we already have enough particles in memory, just adjust the max number in the shader
-				//I am a bit worried that this still keeps the particles in there and slows the frame rate
-				if (obj){
-					obj.material.uniforms.maxToRender.value = node.NparticlesToRender;
-					obj.material.needsUpdate = true;
-					if (node.particles.length >= node.NparticlesToRender) node.particles = node.particles.slice(0, node.NparticlesToRender);
-					if (params.toDraw.length < params.maxFilesToRead){
-						params.toDraw.push([p, node.id, true]); //will be updated later
-						params.toDrawIDs.push(p+node.id);
-					} else {
-						//params.toDraw[params.indexToAddToDraw] = [p, node.id, true];
-						//params.toDrawIDs[params.indexToAddToDraw] = p+node.id;
-					}
-				}
-			}
-
-		})
-	})
-	
-	params.drawPass += 1;``
-
-	//if (params.stats[0].fps() < params.minFPS) console.log('!!! Reached maximum draw limit', params.totalParticlesDrawn, params.stats[0].fps())
 
 	//tweak the number of particles based on the fps
 	//not sure what limits I should set here
-	if (params.FPS >= params.targetFPS) params.NParticleFPSModifier = Math.min(1, params.NParticleFPSModifier*1.5);// + 0.1);
-	if (params.FPS < params.minFPS) params.NParticleFPSModifier = Math.max(0.01, params.NParticleFPSModifier*0.5);// - 0.1);
+	params.NParticleFPSModifier = Math.max(0.01, Math.min(1., params.FPS/params.targetFPS));
+
 	//console.log('total particles drawn',params.totalParticlesDrawn)
+	//rather than a for loop to go through the particles, I am going to manually iterate so that I can draw from one each draw pass
+	//this way the scene gets filled in more regularly, instead of filling in one particle group at a time
+	var p = params.particleTypes[params.pIndex];
+
+
+	//first get all the sizes and distances and sort
+	var toSort = []
+	var indices = []
+	params.octreeNodes[p].forEach(function(node,i){
+		setNodeDrawParams(node);
+
+		//don't include any nodes that are marked for removal
+		if (!params.toRemoveIDs.includes(p+node.id)){
+			toSort.push(node.camerDistance);
+			//toSort.push(node.screenSize/node.cameraDistance);
+			indices.push(i);
+		}
+	});
+	//sort from big to small
+	//indices.sort(function (a, b) { return toSort[a] > toSort[b] ? -1 : toSort[a] < toSort[b] ? 1 : 0; });
+	//sort from small to big
+	indices.sort(function (a, b) { return toSort[a] < toSort[b] ? -1 : toSort[a] > toSort[b] ? 1 : 0; });
+
+	//loop to adjust particles that are already drawn (I want this to work every time and on all nodes)
+	if (params.drawPass > params.particleTypes.length){
+		indices.forEach(function(index){
+
+			var node = params.octreeNodes[p][index];
+			var obj = params.scene.getObjectByName(p+node.id);
+
+			if (obj){
+
+				if (node.screenSize >= params.minNodeScreenSize && node.inView){
+					//particles to adjust (I could make this an if statement t only change if needed, but would that even speed things up?)
+					obj.material.uniforms.maxToRender.value = node.NparticlesToRender;
+					obj.material.uniforms.pointScale.value = node.particleSizeScale;
+					obj.material.needsUpdate = true;
+					if (node.particles.length >= node.NparticlesToRender) node.particles = node.particles.slice(0, node.NparticlesToRender);
+				} else {
+					//particles to remove
+					if (params.toRemove.length < params.maxToRemove && node.particles.length > params.minNParticlesToDraw && !params.toRemoveIDs.includes(p+node.id)){
+						//console.log('removing node', p, node.id, node.NparticlesToRender, node.Nparticles, node.particles.length, node.screenSize, node.inView)
+						params.toRemove.push([p, node.id]); //will be removed later
+						params.toRemoveIDs.push(p+node.id);
+					}
+
+				}
+			}
+		})
+	}
+
+	//loop to add to the draw list, only when there are available slots in params.toDraw
+	if (params.toDraw.length < params.maxFilesToRead) {
+
+		indices.every(function(index){
+
+			var node = params.octreeNodes[p][index];
+			var obj = params.scene.getObjectByName(p+node.id);
+
+			if (!params.toDrawIDs.includes(p+node.id)){
+				//new nodes
+				if (!obj && node.screenSize >= params.minNodeScreenSize && node.inView){
+					//console.log('drawing node', p, node.id, node.NparticlesToRender, node.Nparticles, node.particles.length, node.screenSize, node.inView)
+					params.toDraw.push([p, node.id, false]);
+					params.toDrawIDs.push(p+node.id);
+				}
+				
+				//existing node that needs more particles
+				if (obj && node.particles.length < node.NparticlesToRender && params.toDraw.length < params.maxFilesToRead && node.inView){
+					//console.log('updating node', p, node.id, node.NparticlesToRender, node.Nparticles, node.particles.length, node.screenSize, node.inView)
+					params.toDraw.push([p, node.id, true]); //will be updated later
+					params.toDrawIDs.push(p+node.id);
+				} 
+			}
+
+			if (params.toDraw.length >= params.maxFilesToRead) {
+				console.log('reached draw limit', p, params.toDraw.length);
+				return false;
+			}
+			return true;
+		})
+
+	}
+
+	//increment relevant variables
+	params.drawPass += 1;
+	params.pIndex = (params.pIndex + 1) % params.particleTypes.length;
+
+
+	
 }
 
 function clearDrawer(){
@@ -154,19 +173,38 @@ function clearDrawer(){
 	params.drawIndex = -1;
 	params.toDraw = [];
 	params.toDrawIDs = [];
-	params.readPromisses = [];
+
+}
+
+function clearRemover(){
+	params.removeCount = 0;
+	params.removeIndex = -1;
+	params.toRemove = [];
+	params.toRemoveIDs = [];
 }
 
 function removeUnwantedNodes(){
 	console.log('removing', params.toRemove.length);
-	params.toRemove.forEach(function(name){
-		var obj = params.scene.getObjectByName(name);
-		while(obj){
-			params.scene.remove(obj);
-			obj = params.scene.getObjectByName(name);
+	params.removeCount = 0;
+	params.removeIndex = params.toRemove.length;
+	params.toRemove.forEach(function(arr){
+		var p = arr[0];
+		var iden = arr[1];
+		var obj = params.scene.getObjectByName(p+iden);
+		var node = null;
+		params.octreeNodes[p].forEach(function(n){
+			if (n.id == iden) node = n;
+		})
+		if (node && obj){
+			//swap geometry for the minimum number of particles to show
+			var geo = createParticleGeometry(node.particles, 0, params.minNParticlesToDraw);
+			obj.geometry = geo;
+			obj.geometry.needsUpdate = true;
+			node.particles = node.particles.slice(0, params.minNParticlesToDraw);
 		}
+		params.removeCount += 1;
+
 	});
-	params.toRemove = [];
 }
 
 function drawWantedNodes(){
@@ -181,50 +219,12 @@ function drawWantedNodes(){
 		params.octreeNodes[p].forEach(function(n){
 			if (n.id == iden) node = n;
 		})
-		if (node) drawNode(p, node, updateGeo);
+		if (node) drawNode(node, updateGeo);
 	})
 }
 
 
-function checkFrustum(node){
-	//currently not used
-
-	//this mostly works, but I've seen some strange behavior near the frustum edges
-
-	//check if any of the corners is within the frustum
-	//I might be able to speed this up if I put a return right after setting inFrustum to true
-	var p;
-
-	var inFrustum = false;
-	p = new THREE.Vector3( node.x + node.xWidth/2., node.y + node.yWidth/2., node.z + node.zWidth/2.);
-	if (params.frustum.containsPoint(p)) inFrustum = true;
-
-	p = new THREE.Vector3( node.x - node.xWidth/2., node.y + node.yWidth/2., node.z + node.zWidth/2.);
-	if (params.frustum.containsPoint(p)) inFrustum = true;
-
-	p = new THREE.Vector3( node.x + node.xWidth/2., node.y - node.yWidth/2., node.z + node.zWidth/2.);
-	if (params.frustum.containsPoint(p)) inFrustum = true;
-
-	p = new THREE.Vector3( node.x - node.xWidth/2., node.y - node.yWidth/2., node.z + node.zWidth/2.);
-	if (params.frustum.containsPoint(p)) inFrustum = true;
-
-	p = new THREE.Vector3( node.x + node.xWidth/2., node.y + node.yWidth/2., node.z - node.zWidth/2.);
-	if (params.frustum.containsPoint(p)) inFrustum = true;
-
-	p = new THREE.Vector3( node.x - node.xWidth/2., node.y + node.yWidth/2., node.z - node.zWidth/2.);
-	if (params.frustum.containsPoint(p)) inFrustum = true;
-
-	p = new THREE.Vector3( node.x + node.xWidth/2., node.y - node.yWidth/2., node.z - node.zWidth/2.);
-	if (params.frustum.containsPoint(p)) inFrustum = true;
-
-	p = new THREE.Vector3( node.x - node.xWidth/2., node.y - node.yWidth/2., node.z - node.zWidth/2.);
-	if (params.frustum.containsPoint(p)) inFrustum = true;
-
-	node.inFrustum = inFrustum;
-
-}
-
-function setNodeScreenSize(node){
+function setNodeDrawParams(node){
 //https://discourse.threejs.org/t/how-to-converting-world-coordinates-to-2d-mouse-coordinates-in-threejs/2251
 
 	//estimate the screen size by taking the max of the x,y,z widths
@@ -273,18 +273,71 @@ function setNodeScreenSize(node){
 	//return a fraction of the screen size
 	var width = Math.max(xwidth, Math.max(ywidth, zwidth));
 
+	if (width == 0) console.log('bad width', node.particleType, node.id, xwidth, ywidth, zwidth);
+
 	//this will be a width in pixels
 	node.screenSize = width
 
 	//this will be a normalized width between 0 and 1 (by what should I normalize to)
 	//node.screenSize = width/((window.innerWidth + window.innerHeight)/2.)
+
+	//distance from camera
+	node.cameraDistance = Math.max(0, params.camera.position.distanceTo( new THREE.Vector3( node.x, node.y, node.z) ));
+
+	//check whether in view of the camera
+	//var obj = params.scene.getObjectByName(node.particleType + node.id);
+	//if (!obj) obj = params.nodeBoxes['Box' + node.particleType + node.id]; //in case the object hasn't been drawn yet, use the node box
+	// var box = params.nodeBoxes['Box' + node.particleType + node.id]; 
+	// if (box) node.inView = params.frustum.intersectsBox(box);
+	node.inView = inFrustum(node);
+
+	//number of particles to render will depend on the camera distance and fps
+	//node.NparticlesToRender = Math.max(1., Math.min(node.Nparticles, Math.floor(node.Nparticles*params.boxSize/2./node.cameraDistance*params.NParticleFPSModifier)));
+	node.NparticlesToRender = Math.max(params.minNParticlesToDraw, Math.min(node.Nparticles, Math.floor(node.Nparticles*node.screenSize/window.innerWidth*params.NParticleFPSModifier)));
+
+	if (node.screenSize < params.minNodeScreenSize || !node.inView) node.NparticlesToRender = params.minNParticlesToDraw;
+
+	node.NparticlesToRender = Math.min(node.Nparticles, node.NparticlesToRender);
+
+	//scale particles size by the fraction rendered?
+	node.particleSizeScale = params.boxSize*node.Nparticles/node.NparticlesToRender*params.particleDefaultSizeScale[node.particleType];
+	//node.particleSizeScale = node.cameraDistance*node.Nparticles/node.NparticlesToRender*params.particleDefaultSizeScale[node.particleType];
+	//node.particleSizeScale = params.boxSize/node.screenSize*node.Nparticles/node.NparticlesToRender*params.particleDefaultSizeScale[node.particleType];
+	//node.particleSizeScale = node.cameraDistance*params.particleDefaultSizeScale[node.particleType];
+	//node.particleSizeScale = (window.innerWidth/node.screenSize)*(node.Nparticles/node.NparticlesToRender)*params.particleDefaultSizeScale[node.particleType];
+
+
+
 }
 
+function inFrustum(node){
+	//check if any of the corners is within the frustum
+	var p;
 
+	p = new THREE.Vector3( node.x + node.width/2., node.y + node.width/2., node.z + node.width/2.);
+	if (params.frustum.containsPoint(p)) return true;
 
-function checkNodes(p){
-	//to check in console
-	params.octreeNodes[p].forEach(function(node){
-		if (node.inFrustum) console.log(node.cameraDistance, node.inFrustum, node.screenSize, node.showing)
-	})
+	p = new THREE.Vector3( node.x - node.width/2., node.y + node.width/2., node.z + node.width/2.);
+	if (params.frustum.containsPoint(p)) return true;
+
+	p = new THREE.Vector3( node.x + node.width/2., node.y - node.width/2., node.z + node.width/2.);
+	if (params.frustum.containsPoint(p)) return true;
+
+	p = new THREE.Vector3( node.x - node.width/2., node.y - node.width/2., node.z + node.width/2.);
+	if (params.frustum.containsPoint(p)) return true;
+
+	p = new THREE.Vector3( node.x + node.width/2., node.y + node.width/2., node.z - node.width/2.);
+	if (params.frustum.containsPoint(p)) return true;
+
+	p = new THREE.Vector3( node.x - node.width/2., node.y + node.width/2., node.z - node.width/2.);
+	if (params.frustum.containsPoint(p)) return true;
+
+	p = new THREE.Vector3( node.x + node.width/2., node.y - node.width/2., node.z - node.width/2.);
+	if (params.frustum.containsPoint(p)) return true;
+
+	p = new THREE.Vector3( node.x - node.width/2., node.y - node.width/2., node.z - node.width/2.);
+	if (params.frustum.containsPoint(p)) return true;
+
+	return false;
+
 }

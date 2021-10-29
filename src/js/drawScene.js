@@ -7,6 +7,7 @@ function clearScene(){
 
 }
 
+
 function createParticleGeometry(parts, start, end){
 	//geometry
 	var geo = new THREE.BufferGeometry();
@@ -15,6 +16,7 @@ function createParticleGeometry(parts, start, end){
 	//otherwise, we only draw the first particle	
 	if (!start) start = 0;
 	if (!end) end = parts.length;
+	end = Math.min(parts.length, end);
 	var len = end - start;
 	var i0 = start;
 	var id = name;
@@ -44,7 +46,7 @@ function createParticleGeometry(parts, start, end){
 	return geo;
 }
 
-function addParticlesToScene(parts, color, name, start, end, minPointScale=params.defaultMinParticleSize, maxN=params.maxParticlesToDraw, updateGeo=false){
+function addParticlesToScene(parts, color, name, start, end, minPointSize=params.defaultMinParticleSize, pointScale=1., updateGeo=false){
 	//I can use the start and end values to define how many particles to add to the mesh,
 	//  but first I want to try limitting this in the shader with maxToRender.  That may be quicker than add/removing meshes.
 
@@ -52,6 +54,8 @@ function addParticlesToScene(parts, color, name, start, end, minPointScale=param
 
 	//geometry
 	var geo = createParticleGeometry(parts, start, end);
+
+	var maxN = end - start;
 
 	if (updateGeo){
 		//update the geometry in the mesh
@@ -71,8 +75,9 @@ function addParticlesToScene(parts, color, name, start, end, minPointScale=param
 		var material = new THREE.ShaderMaterial( {
 
 			uniforms: { //add uniform variable here
-				color: {value: new THREE.Vector4( color[0], color[1], color[2], color[3])},
-				minPointScale: {value: minPointScale},
+				color: {value: new THREE.Vector4( color[0]/255., color[1]/255., color[2]/255., color[3])},
+				minPointSize: {value: minPointSize},
+				pointScale: {value: pointScale},
 				maxToRender: {value: maxN} //this will be modified in the render loop
 			},
 
@@ -107,26 +112,30 @@ function addParticlesToScene(parts, color, name, start, end, minPointScale=param
 }
 
 
-function drawNode(p, node, updateGeo=false){
+function drawNode(node, updateGeo=false){
 
 	var drawn = false;
+	var start = 0;
+	var end = node.NparticlesToRender;
+	var minSize = params.defaultMinParticleSize;
+	var sizeScale = node.particleSizeScale;
+	var color = params.particleColors[node.particleType];
+	var name = node.particleType + node.id;
+
 	if (node.hasOwnProperty('particles')){
 		if (node.particles.length >= node.NparticlesToRender){
 			drawn = true;
-			addParticlesToScene(node.particles, params.particleColors[p], p+node.id, 0, node.NparticlesToRender, params.defaultMinParticleSize, node.NparticlesToRender, updateGeo);
+			addParticlesToScene(node.particles, color, name, start, end, minSize, sizeScale, updateGeo);
 		}
 	}
 
 	if (!drawn){
 		//read in the file, and then draw the particles
-		var prom = d3.csv(params.fileRoot[p] + '/' + node.id + '.csv')
-		params.readPromisses.push(prom);
-
-		prom.then(function(d) {
+		d3.csv(params.fileRoot[node.particleType] + '/' + node.id + '.csv').then(function(d) {
 				// console.log('parts',id, d)
 				// checkExtent(d)
 				node.particles = d.slice(0,node.NparticlesToRender);
-				addParticlesToScene(d, params.particleColors[p], p+node.id, 0, node.NparticlesToRender, params.defaultMinParticleSize, node.NparticlesToRender, updateGeo);
+				addParticlesToScene(d, color, name, start, end, minSize, sizeScale, updateGeo);
 			})
 			.catch(function(error){
 				console.log('ERROR:', error)
@@ -136,24 +145,42 @@ function drawNode(p, node, updateGeo=false){
 }
 
 
-function drawOctreeBox(node, color){
+function drawOctreeBox(node, color, linewidth, alpha){
 	// console.log('box', node.x, node.y, node.z, node.width)
 	const geometry = new THREE.BoxGeometry( node.width, node.width, node.width);
 
 	var geo = new THREE.EdgesGeometry( geometry ); // or WireframeGeometry( geometry )
-	var mat = new THREE.LineBasicMaterial( { color: color, linewidth: 2 } );
+	var mat = new THREE.LineBasicMaterial( { 
+		color: color, 
+		linewidth: linewidth,
+		opacity: alpha,
+	} );
 	var wireframe = new THREE.LineSegments( geo, mat );
 	wireframe.position.set(node.x, node.y, node.z);
+	wireframe.name = 'Box'+node.particleType + node.id;
 
 	params.scene.add(wireframe);
 }
-function drawOctreeBoxes(octreeNodes, color='#00FFFF'){
+function drawOctreeBoxes(octreeNodes, color='#00FFFF', linewidth=2, alpha=1){
 	octreeNodes.forEach(function(node){
-		drawOctreeBox(node, color);
+		drawOctreeBox(node, color, linewidth, alpha);
 
 	})
-
 }
+
+
+function createOctreeBox(node){
+	var min = new THREE.Vector3(node.x - node.width/2, node.y - node.width/2, node.z - node.with/2);
+	var max = new THREE.Vector3(node.x + node.width/2, node.y + node.width/2, node.z + node.with/2);
+	const box = new THREE.Box3(min, max);
+	params.nodeBoxes['Box'+node.particleType + node.id] = box;
+}
+function createOctreeBoxes(octreeNodes){
+	octreeNodes.forEach(function(node){
+		createOctreeBox(node);
+	})
+}
+
 
 function checkExtent(parts){
 	var maxX = -1e10;
