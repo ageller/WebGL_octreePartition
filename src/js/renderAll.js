@@ -306,6 +306,7 @@ function setNodeDrawParams(node){
 	//node.particleSizeScale = node.cameraDistance*params.particleDefaultSizeScale[node.particleType];
 	//node.particleSizeScale = (window.innerWidth/node.screenSize)*(node.Nparticles/node.NparticlesToRender)*params.particleDefaultSizeScale[node.particleType];
 
+	node.color[3] = params.particleColors[node.particleType][3]*Math.min(1., node.Nparticles/node.NparticlesToRender);
 
 
 }

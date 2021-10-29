@@ -69,6 +69,7 @@ function pruneOctree(tree, p){
 		d.particleSizeScale = 1.;
 		d.particleType = p;
 		d.inView = true;
+		d.color =  params.particleColors[p];
 		if (d.Nparticles > 0) out.push(d);
 	})
 

@@ -119,7 +119,8 @@ function drawNode(node, updateGeo=false){
 	var end = node.NparticlesToRender;
 	var minSize = params.defaultMinParticleSize;
 	var sizeScale = node.particleSizeScale;
-	var color = params.particleColors[node.particleType];
+	// var color = params.particleColors[node.particleType];
+	var color = node.color;
 	var name = node.particleType + node.id;
 
 	if (node.hasOwnProperty('particles')){
