@@ -116,7 +116,7 @@ function update(){
 					if (node.particles.length >= node.NparticlesToRender) node.particles = node.particles.slice(0, node.NparticlesToRender);
 				} else {
 					//particles to remove
-					if (params.toRemove.length < params.maxToRemove && node.particles.length > params.minNParticlesToDraw && !params.toRemoveIDs.includes(p+node.id)){
+					if (params.toRemove.length < params.maxToRemove && node.particles.length > Math.floor(node.Nparticles*params.minFracParticlesToDraw) && !params.toRemoveIDs.includes(p+node.id)){
 						//console.log('removing node', p, node.id, node.NparticlesToRender, node.Nparticles, node.particles.length, node.screenSize, node.inView)
 						params.toRemove.push([p, node.id]); //will be removed later
 						params.toRemoveIDs.push(p+node.id);
@@ -197,10 +197,10 @@ function removeUnwantedNodes(){
 		})
 		if (node && obj){
 			//swap geometry for the minimum number of particles to show
-			var geo = createParticleGeometry(node.particles, 0, params.minNParticlesToDraw);
+			var geo = createParticleGeometry(node.particles, 0, Math.floor(node.Nparticles*params.minFracParticlesToDraw));
 			obj.geometry = geo;
 			obj.geometry.needsUpdate = true;
-			node.particles = node.particles.slice(0, params.minNParticlesToDraw);
+			node.particles = node.particles.slice(0, Math.floor(node.Nparticles*params.minFracParticlesToDraw));
 		}
 		params.removeCount += 1;
 
@@ -293,9 +293,9 @@ function setNodeDrawParams(node){
 
 	//number of particles to render will depend on the camera distance and fps
 	//node.NparticlesToRender = Math.max(1., Math.min(node.Nparticles, Math.floor(node.Nparticles*params.boxSize/2./node.cameraDistance*params.NParticleFPSModifier)));
-	node.NparticlesToRender = Math.max(params.minNParticlesToDraw, Math.min(node.Nparticles, Math.floor(node.Nparticles*node.screenSize/window.innerWidth*params.NParticleFPSModifier)));
+	node.NparticlesToRender = Math.max(Math.floor(node.Nparticles*params.minFracParticlesToDraw), Math.min(node.Nparticles, Math.floor(node.Nparticles*node.screenSize/window.innerWidth*params.NParticleFPSModifier)));
 
-	if (node.screenSize < params.minNodeScreenSize || !node.inView) node.NparticlesToRender = params.minNParticlesToDraw;
+	if (node.screenSize < params.minNodeScreenSize || !node.inView) node.NparticlesToRender = Math.floor(node.Nparticles*params.minFracParticlesToDraw);
 
 	node.NparticlesToRender = Math.min(node.Nparticles, node.NparticlesToRender);
 

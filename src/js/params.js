@@ -62,7 +62,7 @@ function defineParams(){
 		this.maxFilesToRead = 50;
 		this.maxToRemove = 50;
 
-		this.minNParticlesToDraw = 10; //minimum number per node to draw (unless there are less particles than this total in the node) >0
+		this.minFracParticlesToDraw = 0.001; //minimum fraction per node to draw (unless there are less particles than this total in the node) >0
 
 		this.FPS = 30; //will be changed each render call
 		this.targetFPS = 30; //will be used to controls the NParticleFPSModifier

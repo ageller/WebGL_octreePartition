@@ -1,4 +1,4 @@
-
+//I should include some screen indicator for when the renderer is drawing, ideally somekind of progress bar.
 
 
 //this initializes everything needed for the scene
