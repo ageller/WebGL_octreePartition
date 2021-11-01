@@ -99,13 +99,13 @@ function update(){
 	//sort from small to big
 	indices.sort(function (a, b) { return toSort[a] < toSort[b] ? -1 : toSort[a] > toSort[b] ? 1 : 0; });
 
-	//loop to adjust particles that are already drawn (I want this to work every time and on all nodes)
-	if (params.drawPass > params.particleTypes.length){
-		indices.forEach(function(index){
+	indices.forEach(function(index){
 
-			var node = params.octreeNodes[p][index];
-			var obj = params.scene.getObjectByName(p+node.id);
+		var node = params.octreeNodes[p][index];
+		var obj = params.scene.getObjectByName(p+node.id);
 
+		if (params.drawPass > params.particleTypes.length){
+			//adjust particles that are already drawn (I want this to work every time and on all nodes)
 			if (obj){
 
 				if (node.screenSize >= params.minNodeScreenSize && node.inView){
@@ -124,17 +124,10 @@ function update(){
 
 				}
 			}
-		})
-	}
+		}
 
-	//loop to add to the draw list, only when there are available slots in params.toDraw
-	if (params.toDraw.length < params.maxFilesToRead) {
-
-		indices.every(function(index){
-
-			var node = params.octreeNodes[p][index];
-			var obj = params.scene.getObjectByName(p+node.id);
-
+		//add to the draw list, only when there are available slots in params.toDraw
+		if (params.toDraw.length < params.maxFilesToRead) {
 			if (!params.toDrawIDs.includes(p+node.id)){
 				//new nodes
 				if (!obj && node.screenSize >= params.minNodeScreenSize && node.inView){
@@ -156,9 +149,9 @@ function update(){
 				return false;
 			}
 			return true;
-		})
+		}
+	})
 
-	}
 
 	//increment relevant variables
 	params.drawPass += 1;
