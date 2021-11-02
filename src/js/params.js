@@ -11,7 +11,7 @@ function defineParams(){
 		this.particleColors = {'Gas':[ 255, 0, 200, 0.01],
 							   'Stars':[0, 200, 255, 0.1],
 							   'LRDM':[240, 240, 140, 0.05],
-							   'HRDM':[240, 240, 140, 0.1]};
+							   'HRDM':[240, 240, 140, 0.05]};
 		this.fileRoot = {'Gas':'src/data/m12i_res71000-100k/octreeNodes/Gas',
 						 'Stars':'src/data/m12i_res71000-100k/octreeNodes/Stars',
 						 'LRDM':'src/data/m12i_res71000-100k/octreeNodes/LRDM',
