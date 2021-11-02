@@ -52,10 +52,10 @@ function init(target){
 	if (target){
 		params.camera.position.x = target.x;
 		params.camera.position.y = target.y;
-		params.camera.position.z = target.z + 20000;
+		params.camera.position.z = target.z + 10000;
 	}
 	params.controls = new THREE.FlyControls( params.camera , params.renderer.domElement);
-	params.controls.movementSpeed = 20.;
+	params.controls.movementSpeed = 10.;
 
 
 
@@ -70,6 +70,7 @@ function pruneOctree(tree, p){
 		d.particleType = p;
 		d.inView = true;
 		d.color =  params.particleColors[p];
+		d.particles = {'Coordinates':[]};
 		if (d.Nparticles > 0) out.push(d);
 	})
 

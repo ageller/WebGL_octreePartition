@@ -37,6 +37,9 @@ function update(){
 	params.controls.update();
 
 
+	//check and remove duplicates from scene (I don't know why this happens)
+	if (params.drawCount % 50 == 0) removeDuplicatesFromScene();
+
 	//check if we should reset the draw buffer
 	var dateCheck = new Date().getTime()/1000.
 	if ((dateCheck - params.drawStartTime) > params.maxDrawInterval && params.drawPass > 100  && params.drawCount < params.toDraw.length){
@@ -89,7 +92,7 @@ function update(){
 
 		//don't include any nodes that are marked for removal
 		if (!params.toRemoveIDs.includes(p+node.id)){
-			toSort.push(node.camerDistance);
+			toSort.push(node.cameraDistance);
 			//toSort.push(node.screenSize/node.cameraDistance);
 			indices.push(i);
 		}
@@ -113,11 +116,11 @@ function update(){
 					obj.material.uniforms.maxToRender.value = node.NparticlesToRender;
 					obj.material.uniforms.pointScale.value = node.particleSizeScale;
 					obj.material.needsUpdate = true;
-					if (node.particles.length >= node.NparticlesToRender) node.particles = node.particles.slice(0, node.NparticlesToRender);
+					if (node.particles.Coordinates.length >= node.NparticlesToRender) reduceParticles(node)
 				} else {
 					//particles to remove
-					if (params.toRemove.length < params.maxToRemove && node.particles.length > Math.floor(node.Nparticles*params.minFracParticlesToDraw) && !params.toRemoveIDs.includes(p+node.id)){
-						//console.log('removing node', p, node.id, node.NparticlesToRender, node.Nparticles, node.particles.length, node.screenSize, node.inView)
+					if (params.toRemove.length < params.maxToRemove && node.particles.Coordinates.length > Math.floor(node.Nparticles*params.minFracParticlesToDraw) && !params.toRemoveIDs.includes(p+node.id)){
+						//console.log('removing node', p, node.id, node.NparticlesToRender, node.Nparticles, node.particles.Coordinates.length, node.screenSize, node.inView)
 						params.toRemove.push([p, node.id]); //will be removed later
 						params.toRemoveIDs.push(p+node.id);
 					}
@@ -128,23 +131,25 @@ function update(){
 
 		//add to the draw list, only when there are available slots in params.toDraw
 		if (params.toDraw.length < params.maxFilesToRead) {
-			if (!params.toDrawIDs.includes(p+node.id)){
+			if (!params.toDrawIDs.includes(p+node.id) && node.NparticlesToRender > 0){
 				//new nodes
-				if (!obj && node.screenSize >= params.minNodeScreenSize && node.inView){
-					//console.log('drawing node', p, node.id, node.NparticlesToRender, node.Nparticles, node.particles.length, node.screenSize, node.inView)
+				if (!obj && node.screenSize >= params.minNodeScreenSize && node.inView ){
+					//console.log('drawing node', p, node.id, node.NparticlesToRender, node.Nparticles, node.particles.Coordinates.length, node.screenSize, node.inView)
 					params.toDraw.push([p, node.id, false]);
 					params.toDrawIDs.push(p+node.id);
 				}
 				
 				//existing node that needs more particles
-				if (obj && node.particles.length < node.NparticlesToRender && params.toDraw.length < params.maxFilesToRead && node.inView){
-					//console.log('updating node', p, node.id, node.NparticlesToRender, node.Nparticles, node.particles.length, node.screenSize, node.inView)
+				if (obj && node.particles.Coordinates.length < node.NparticlesToRender && params.toDraw.length < params.maxFilesToRead && node.inView){
+					//console.log('updating node', p, node.id, node.NparticlesToRender, node.Nparticles, node.particles.Coordinates.length, node.screenSize, node.inView)
 					params.toDraw.push([p, node.id, true]); //will be updated later
 					params.toDrawIDs.push(p+node.id);
 				} 
 			}
 
 			if (params.toDraw.length >= params.maxFilesToRead) {
+				params.drawCount = 0;
+				params.drawIndex = -1;
 				console.log('reached draw limit', p, params.toDraw.length);
 				return false;
 			}
@@ -176,6 +181,28 @@ function clearRemover(){
 	params.toRemoveIDs = [];
 }
 
+function removeDuplicatesFromScene(){
+	//For some reason duplicate nodes get drawn to the scene.  This will remove them
+	var keepNames = [];
+	var removeNames = [];
+	params.scene.traverse(function(obj){
+		if (obj.isMesh || obj.isLine || obj.isPoints) {
+			if (keepNames.includes(obj.name)) {
+				removeNames.push(obj.name);
+			} else {
+				keepNames.push(obj.name);
+			}
+		}
+	})
+	if (removeNames.length > 0){
+		console.log('have duplicates in scene', removeNames.length)
+		removeNames.forEach(function(name){
+			obj = params.scene.getObjectByName(name);
+			if (obj) params.scene.remove(obj);
+		})
+	}
+
+}
 function removeUnwantedNodes(){
 	console.log('removing', params.toRemove.length);
 	params.removeCount = 0;
@@ -190,10 +217,11 @@ function removeUnwantedNodes(){
 		})
 		if (node && obj){
 			//swap geometry for the minimum number of particles to show
-			var geo = createParticleGeometry(node.particles, 0, Math.floor(node.Nparticles*params.minFracParticlesToDraw));
+			node.NparticlesToRender = Math.floor(node.Nparticles*params.minFracParticlesToDraw);
+			reduceParticles(node);
+			var geo = createParticleGeometry(node.particles, 0, node.NparticlesToRender);
 			obj.geometry = geo;
 			obj.geometry.needsUpdate = true;
-			node.particles = node.particles.slice(0, Math.floor(node.Nparticles*params.minFracParticlesToDraw));
 		}
 		params.removeCount += 1;
 
@@ -285,8 +313,8 @@ function setNodeDrawParams(node){
 	node.inView = inFrustum(node);
 
 	//number of particles to render will depend on the camera distance and fps
-	//node.NparticlesToRender = Math.max(1., Math.min(node.Nparticles, Math.floor(node.Nparticles*params.boxSize/2./node.cameraDistance*params.NParticleFPSModifier)));
-	node.NparticlesToRender = Math.max(Math.floor(node.Nparticles*params.minFracParticlesToDraw), Math.min(node.Nparticles, Math.floor(node.Nparticles*node.screenSize/window.innerWidth*params.NParticleFPSModifier)));
+	//node.NparticlesToRender = Math.max(Math.floor(node.Nparticles*params.minFracParticlesToDraw), Math.min(node.Nparticles, Math.floor(node.Nparticles*node.screenSize/window.innerWidth*params.NParticleFPSModifier)));
+	node.NparticlesToRender = Math.max(Math.floor(node.Nparticles*params.minFracParticlesToDraw), Math.min(node.Nparticles, Math.floor(node.Nparticles*params.normCameraDistance[node.particleType]/node.cameraDistance*params.NParticleFPSModifier)));
 
 	if (node.screenSize < params.minNodeScreenSize || !node.inView) node.NparticlesToRender = Math.floor(node.Nparticles*params.minFracParticlesToDraw);
 
@@ -305,8 +333,19 @@ function setNodeDrawParams(node){
 }
 
 function inFrustum(node){
+
+	//use three.js check (only possible if already in scene)
+	var obj = params.scene.getObjectByName(node.particleType + node.id);
+	if (obj){
+		if (params.frustum.intersectsObject(obj)) return true;
+	}
+
+	//in case the above fails, check manually
 	//check if any of the corners is within the frustum
 	var p;
+
+	p = new THREE.Vector3( node.x, node.y, node.z);
+	if (params.frustum.containsPoint(p)) return true;
 
 	p = new THREE.Vector3( node.x + node.width/2., node.y + node.width/2., node.z + node.width/2.);
 	if (params.frustum.containsPoint(p)) return true;
@@ -332,6 +371,14 @@ function inFrustum(node){
 	p = new THREE.Vector3( node.x - node.width/2., node.y - node.width/2., node.z - node.width/2.);
 	if (params.frustum.containsPoint(p)) return true;
 
+
+
 	return false;
 
+}
+
+function checkNodes(p){
+	params.octreeNodes[p].forEach(function(node){
+		if (node.inView) console.log(node.id, node.NparticlesToRender/node.Nparticles, node.NparticlesToRender, node.Nparticles);
+	})
 }

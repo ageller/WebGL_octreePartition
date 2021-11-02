@@ -11,12 +11,11 @@ function clearScene(){
 function createParticleGeometry(parts, start, end){
 	//geometry
 	var geo = new THREE.BufferGeometry();
-
 	//if all == true, then we draw all the particles except the first, which will always be there to define the node locations
 	//otherwise, we only draw the first particle	
 	if (!start) start = 0;
-	if (!end) end = parts.length;
-	end = Math.min(parts.length, end);
+	if (!end) end = parts.Coordinates.length;
+	end = Math.min(parts.Coordinates.length, end);
 	var len = end - start;
 	var i0 = start;
 	var id = name;
@@ -35,9 +34,9 @@ function createParticleGeometry(parts, start, end){
 	var pindex = 0;
 	for (var j=0; j<len; j++){
 			
-			position[pindex++] = parseFloat(parts[j].x);
-			position[pindex++] = parseFloat(parts[j].y);
-			position[pindex++] = parseFloat(parts[j].z);
+			position[pindex++] = parseFloat(parts.Coordinates[j][0]);
+			position[pindex++] = parseFloat(parts.Coordinates[j][1]);
+			position[pindex++] = parseFloat(parts.Coordinates[j][2]);
 
 			pointIndex[j] = parseFloat(j);
 
@@ -51,52 +50,54 @@ function addParticlesToScene(parts, color, name, start, end, minPointSize=params
 	//  but first I want to try limitting this in the shader with maxToRender.  That may be quicker than add/removing meshes.
 
 	params.drawStartTime = new Date().getTime()/1000;
+	if (end - start > 0){
 
-	//geometry
-	var geo = createParticleGeometry(parts, start, end);
+		//geometry
+		var geo = createParticleGeometry(parts, start, end);
 
-	var maxN = end - start;
+		var maxN = end - start;
 
-	if (updateGeo){
-		//update the geometry in the mesh
-		var obj = params.scene.getObjectByName(name);
-		if (obj){
-			obj.geometry = geo;
-			obj.geometry.needsUpdate = true;
+		if (updateGeo){
+			//update the geometry in the mesh
+			var obj = params.scene.getObjectByName(name);
+			if (obj){
+				obj.geometry = geo;
+				obj.geometry.needsUpdate = true;
+			}
+
+		} else {
+			//create the mesh
+			var blend = THREE.AdditiveBlending;
+			var dWrite = false;
+			var dTest = false;
+			var transp = true;
+
+			var material = new THREE.ShaderMaterial( {
+
+				uniforms: { //add uniform variable here
+					color: {value: new THREE.Vector4( color[0]/255., color[1]/255., color[2]/255., color[3])},
+					minPointSize: {value: minPointSize},
+					pointScale: {value: pointScale},
+					maxToRender: {value: maxN} //this will be modified in the render loop
+				},
+
+				vertexShader: myVertexShader,
+				fragmentShader: myFragmentShader,
+				depthWrite:dWrite,
+				depthTest: dTest,
+				transparent:transp,
+				alphaTest: false,
+				blending:blend,
+			} );
+
+
+
+			var mesh = new THREE.Points(geo, material);
+			mesh.name = name;
+			params.scene.add(mesh);
+
+			mesh.position.set(0,0,0);
 		}
-
-	} else {
-		//create the mesh
-		var blend = THREE.AdditiveBlending;
-		var dWrite = false;
-		var dTest = false;
-		var transp = true;
-
-		var material = new THREE.ShaderMaterial( {
-
-			uniforms: { //add uniform variable here
-				color: {value: new THREE.Vector4( color[0]/255., color[1]/255., color[2]/255., color[3])},
-				minPointSize: {value: minPointSize},
-				pointScale: {value: pointScale},
-				maxToRender: {value: maxN} //this will be modified in the render loop
-			},
-
-			vertexShader: myVertexShader,
-			fragmentShader: myFragmentShader,
-			depthWrite:dWrite,
-			depthTest: dTest,
-			transparent:transp,
-			alphaTest: false,
-			blending:blend,
-		} );
-
-
-
-		var mesh = new THREE.Points(geo, material);
-		mesh.name = name;
-		params.scene.add(mesh);
-
-		mesh.position.set(0,0,0);
 	}
 
 	//remove from the toDraw list
@@ -111,6 +112,36 @@ function addParticlesToScene(parts, color, name, start, end, minPointSize=params
 
 }
 
+function formatCSVdata(data){
+	var out = {'Coordinates':[]};
+	if (data.length > 0){
+		var keys = Object.keys(data[0]);
+		if (keys.includes('vx') && keys.includes('vy') && keys.includes('vz')) out.Velocities = [];
+		var extraKeys = [];
+		keys.forEach(function(k){
+			if (k != 'x' && k != 'y' && k != 'z' && k != 'vx' && k != 'vy' && k != 'vz') {
+				out[k] = [];
+				extraKeys.push(k);
+			}
+		})
+		data.forEach(function(d){
+			out.Coordinates.push([parseFloat(d.x), parseFloat(d.y), parseFloat(d.z)]);
+			if (out.hasOwnProperty('Velocities')) out.Velocities.push([parseFloat(d.vx), parseFloat(d.vy), parseFloat(d.vz)]);
+			extraKeys.forEach(function(k){
+				out[k].push(parseFloat(d[k]));
+			})
+		})
+	}
+
+	return out;
+}
+
+function reduceParticles(node, N=null){
+	if (N == null) N = node.NparticlesToRender;
+	Object.keys(node.particles).forEach(function(k){
+		node.particles[k] = node.particles[k].slice(0, N);
+	})
+}
 
 function drawNode(node, updateGeo=false){
 
@@ -124,7 +155,7 @@ function drawNode(node, updateGeo=false){
 	var name = node.particleType + node.id;
 
 	if (node.hasOwnProperty('particles')){
-		if (node.particles.length >= node.NparticlesToRender){
+		if (node.particles.Coordinates.length >= node.NparticlesToRender){
 			drawn = true;
 			addParticlesToScene(node.particles, color, name, start, end, minSize, sizeScale, updateGeo);
 		}
@@ -135,8 +166,9 @@ function drawNode(node, updateGeo=false){
 		d3.csv(params.fileRoot[node.particleType] + '/' + node.id + '.csv').then(function(d) {
 				// console.log('parts',id, d)
 				// checkExtent(d)
-				node.particles = d.slice(0,node.NparticlesToRender);
-				addParticlesToScene(d, color, name, start, end, minSize, sizeScale, updateGeo);
+				//reformat this to the usual Firefly structure with Coordinates as a list of lists
+				node.particles = formatCSVdata(d.slice(0,node.NparticlesToRender));
+				addParticlesToScene(node.particles, color, name, start, end, minSize, sizeScale, updateGeo);
 			})
 			.catch(function(error){
 				console.log('ERROR:', error)
